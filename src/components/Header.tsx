@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { auth } from "@/lib/firebase";
-import { type SteamProfile } from "@/proto/steam/steam";
+import { useTRPC } from "@/trpc/client";
+import { useQuery } from "@tanstack/react-query";
 
 // Helper to construct avatar URLs from avatarHash
 function avatarUrl(hash: string) {
@@ -14,29 +15,13 @@ function avatarUrl(hash: string) {
 export default function Header() {
   const { user, loading } = useAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [steamProfile, setSteamProfile] = useState<SteamProfile | null>(null);
+  const trpc = useTRPC();
 
-  // Fetch Steam profile when user is logged in
-  useEffect(() => {
-    if (user) {
-      // Get steam_id from JWT claims
-      auth.currentUser?.getIdTokenResult().then((tokenResult) => {
-        const steamId = tokenResult.claims.steam_id as string | undefined;
-        if (steamId) {
-          fetch(`/api/steam/profile?steamId=${steamId}`)
-            .then((res) => res.json())
-            .then((data) => {
-              if (data.profile) {
-                setSteamProfile(data.profile);
-              }
-            })
-            .catch(() => {
-              // Silently fail - will show generic avatar
-            });
-        }
-      });
-    }
-  }, [user]);
+  // Fetch Steam profile using tRPC
+  const profileQuery = useQuery({
+    ...trpc.user.profile.queryOptions(),
+    enabled: !!user, // Only fetch when user is logged in
+  });
 
   const handleLogout = async () => {
     await auth.signOut();
@@ -63,10 +48,10 @@ export default function Header() {
                     onClick={() => setIsMenuOpen(!isMenuOpen)}
                     className="flex items-center gap-2 hover:bg-zinc-900 rounded-lg px-3 py-2 transition-colors"
                   >
-                    {steamProfile?.avatarHash ? (
+                    {profileQuery.data?.avatarHash ? (
                       <img
-                        src={avatarUrl(steamProfile.avatarHash)}
-                        alt={steamProfile.name}
+                        src={avatarUrl(profileQuery.data.avatarHash)}
+                        alt={profileQuery.data.name}
                         className="w-8 h-8 rounded-full"
                       />
                     ) : (
@@ -77,7 +62,7 @@ export default function Header() {
                       </div>
                     )}
                     <span className="text-sm text-white hidden sm:block">
-                      {steamProfile?.name || "Account"}
+                      {profileQuery.data?.name || "Account"}
                     </span>
                     <svg
                       className={`w-4 h-4 text-zinc-400 transition-transform ${isMenuOpen ? "rotate-180" : ""}`}

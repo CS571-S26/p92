@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { useTRPC } from "@/trpc/client";
 import {
   DndContext,
   DragOverlay,
@@ -14,9 +16,19 @@ import {
   useDraggable,
   useDroppable,
 } from "@dnd-kit/core";
-import api from "@/utils/axios";
-import { auth } from "@/lib/firebase";
+import type { OurMarket } from "@skinshi/auth-worker/schemas";
+import { PlaceBetSchema } from "@skinshi/auth-worker/schemas/bet";
+// TODO: Replace with tRPC once auth worker has bets procedures
 
+// Inventory item from tRPC (snake_case from backend)
+interface InventoryAsset {
+  assetid: string;
+  classid: string;
+  name: string;
+  icon_url: string;
+}
+
+// Internal format for BetModal (camelCase)
 interface InventoryItem {
   assetId: string;
   classId: string;
@@ -24,17 +36,6 @@ interface InventoryItem {
   tradable: boolean;
   iconUrl: string;
   isCase: boolean;
-}
-
-interface Market {
-  id: string;
-  slug: string;
-  market_id: string;
-  question: string;
-  icon_url: string;
-  betting_closes_at: string;
-  polymarket_odds: { yes: number; no: number };
-  our_odds: { yes: number; no: number };
 }
 
 interface BetModalProps {
@@ -50,7 +51,7 @@ interface BetModalProps {
     trade_expires_at: string;
     item_count: number;
   }) => void;
-  market: Market;
+  market: OurMarket;
   outcome: "yes" | "no";
 }
 
@@ -72,11 +73,18 @@ interface PoolItem {
 }
 
 // Draggable Case Card
-function DraggableCase({ item, availableCount }: { item: GroupedItem; availableCount: number }) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
-    id: item.classId,
-    data: { item },
-  });
+function DraggableCase({
+  item,
+  availableCount,
+}: {
+  item: GroupedItem;
+  availableCount: number;
+}) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } =
+    useDraggable({
+      id: item.classId,
+      data: { item },
+    });
 
   const style = transform
     ? {
@@ -94,8 +102,14 @@ function DraggableCase({ item, availableCount }: { item: GroupedItem; availableC
         isDragging ? "opacity-50 scale-105" : ""
       } ${availableCount === 0 ? "opacity-50 cursor-not-allowed" : ""}`}
     >
-      <img src={item.iconUrl} alt={item.name} className="w-full h-full max-h-[60%] object-contain mb-2" />
-      <p className="text-xs text-zinc-300 truncate w-full text-center px-1">{item.name}</p>
+      <img
+        src={item.iconUrl}
+        alt={item.name}
+        className="w-full h-full max-h-[60%] object-contain mb-2"
+      />
+      <p className="text-xs text-zinc-300 truncate w-full text-center px-1">
+        {item.name}
+      </p>
       <span className="absolute top-2 right-2 bg-zinc-800 text-zinc-400 text-[10px] px-1.5 py-0.5 rounded">
         x{availableCount}
       </span>
@@ -128,10 +142,16 @@ function QuantityPopup({
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
       <div className="bg-zinc-900 border border-zinc-700 rounded-xl p-6 max-w-sm w-full">
-        <h3 className="text-lg font-semibold text-white mb-4">Add to Bet Pool</h3>
+        <h3 className="text-lg font-semibold text-white mb-4">
+          Add to Bet Pool
+        </h3>
 
         <div className="flex items-center gap-4 mb-6">
-          <img src={item.iconUrl} alt={item.name} className="w-16 h-16 object-contain" />
+          <img
+            src={item.iconUrl}
+            alt={item.name}
+            className="w-16 h-16 object-contain"
+          />
           <div>
             <p className="text-white font-medium">{item.name}</p>
             <p className="text-zinc-500 text-sm">{maxQuantity} available</p>
@@ -227,8 +247,15 @@ function DroppablePool({
       ) : (
         <div className="grid grid-cols-3 gap-2">
           {pool.map((item) => (
-            <div key={item.classId} className="relative bg-zinc-900 border border-emerald-500/30 rounded-lg p-2">
-              <img src={item.iconUrl} alt={item.name} className="w-full h-12 object-contain mb-1" />
+            <div
+              key={item.classId}
+              className="relative bg-zinc-900 border border-emerald-500/30 rounded-lg p-2"
+            >
+              <img
+                src={item.iconUrl}
+                alt={item.name}
+                className="w-full h-12 object-contain mb-1"
+              />
               <p className="text-xs text-zinc-400 truncate">{item.name}</p>
 
               <span className="absolute top-1 right-1 bg-emerald-500 text-black text-[10px] font-bold px-1.5 rounded">
@@ -242,7 +269,9 @@ function DroppablePool({
                 >
                   -
                 </button>
-                <span className="text-xs text-white w-4 text-center">{item.assetIds.length}</span>
+                <span className="text-xs text-white w-4 text-center">
+                  {item.assetIds.length}
+                </span>
                 <button
                   onClick={() => onUpdateQuantity(item.classId, 1)}
                   className="w-5 h-5 rounded bg-zinc-800 hover:bg-zinc-700 text-white text-xs"
@@ -265,37 +294,93 @@ function DroppablePool({
   );
 }
 
-export default function BetModal({ isOpen, onClose, onSuccess, market, outcome }: BetModalProps) {
-  const [inventory, setInventory] = useState<InventoryItem[]>([]);
+export default function BetModal({
+  isOpen,
+  onClose,
+  onSuccess,
+  market,
+  outcome,
+}: BetModalProps) {
+  const trpc = useTRPC();
+
+  // Check if market is resolved (or closed/cancelled) - disable betting entirely
+  const isResolved = market.status !== "open";
+  const resolvedReason =
+    market.status === "resolved"
+      ? "Market resolved"
+      : market.status === "closed"
+        ? "Betting closed"
+        : market.status === "cancelled"
+          ? "Market cancelled"
+          : null;
+
+  // Fetch inventory via tRPC (must be before any hooks that reference it)
+  const inventoryQuery = useQuery({
+    ...trpc.user.inventory.queryOptions(),
+    enabled: isOpen,
+  });
+
   const [pool, setPool] = useState<PoolItem[]>([]);
   const [tradeUrl, setTradeUrl] = useState("");
   const [hasTradeUrl, setHasTradeUrl] = useState(false);
-  const [activeDragItem, setActiveDragItem] = useState<GroupedItem | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [activeDragItem, setActiveDragItem] = useState<GroupedItem | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [steamId, setSteamId] = useState<string>("");
-  
+
   // Force inventory refresh counter
   const [inventoryRefreshKey, setInventoryRefreshKey] = useState(0);
 
   // Track user's bet history for empty state
-  const [userBetHistory, setUserBetHistory] = useState<{ totalBets: number; totalCases: number } | null>(null);
+  const [userBetHistory, setUserBetHistory] = useState<{
+    totalBets: number;
+    totalCases: number;
+  } | null>(null);
 
   // Quantity popup state
   const [showQuantityPopup, setShowQuantityPopup] = useState(false);
-  const [selectedItemForPool, setSelectedItemForPool] = useState<GroupedItem | null>(null);
+  const [selectedItemForPool, setSelectedItemForPool] =
+    useState<GroupedItem | null>(null);
 
   // Track pending bets for validation
   const [pendingBets, setPendingBets] = useState<number>(0);
+
+  // Bet trade mutation
+  const betTradeMutation = useMutation(
+    trpc.bet.trade.mutationOptions({
+      onSuccess: (data) => console.log("[BetModal] bet.trade success:", data),
+      onError: (err) => console.error("[BetModal] bet.trade error:", err),
+    }),
+  );
 
   const ITEMS_PER_PAGE = 12;
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(KeyboardSensor)
+    useSensor(KeyboardSensor),
   );
+
+  // Transform tRPC data to BetModal format
+  const inventory: InventoryItem[] = useMemo(() => {
+    if (!inventoryQuery.data?.items) return [];
+    return inventoryQuery.data.items.map((item: InventoryAsset) => ({
+      assetId: item.assetid,
+      classId: item.classid,
+      name: item.name,
+      tradable: true,
+      iconUrl: `https://steamcommunity-a.akamaihd.net/economy/image/${item.icon_url}`,
+      isCase: true,
+    }));
+  }, [inventoryQuery.data]);
+
+  // Refresh inventory when modal opens or refresh key changes
+  useEffect(() => {
+    if (isOpen && inventoryQuery.refetch) {
+      inventoryQuery.refetch();
+    }
+  }, [isOpen, inventoryRefreshKey]);
 
   // Group inventory by classId
   const groupedInventory = useMemo(() => {
@@ -321,7 +406,7 @@ export default function BetModal({ isOpen, onClose, onSuccess, market, outcome }
       if (group) {
         group.inPoolAssetIds = [...poolItem.assetIds];
         group.availableAssetIds = group.availableAssetIds.filter(
-          (id) => !poolItem.assetIds.includes(id)
+          (id) => !poolItem.assetIds.includes(id),
         );
       }
     });
@@ -332,82 +417,46 @@ export default function BetModal({ isOpen, onClose, onSuccess, market, outcome }
   // Check if user can place bets
   const canPlaceBets = groupedInventory.length > 0 && pendingBets === 0;
   const hasItems = groupedInventory.length > 0;
+  const isLoading = inventoryQuery.isLoading;
 
   const totalPages = Math.ceil(groupedInventory.length / ITEMS_PER_PAGE);
   const paginatedInventory = groupedInventory.slice(
     (currentPage - 1) * ITEMS_PER_PAGE,
-    currentPage * ITEMS_PER_PAGE
+    currentPage * ITEMS_PER_PAGE,
   );
 
-  // Get steam ID from auth
-  useEffect(() => {
-    const getSteamId = async () => {
-      const user = auth.currentUser;
-      if (user) {
-        const token = await user.getIdTokenResult();
-        const sid = token.claims.steam_id as string;
-        if (sid) {
-          setSteamId(sid);
-        } else {
-          setError("Please link your Steam account in your profile to bet");
-        }
-      } else {
-        setError("Please login to place bets");
-      }
-    };
-    getSteamId();
-  }, []);
-
-  // Load trade URL
+  // Load trade URL from localStorage
   useEffect(() => {
     const saved = localStorage.getItem("skinshi_trade_url");
     if (saved) {
       setTradeUrl(saved);
       setHasTradeUrl(true);
+    } else {
+      setTradeUrl("");
+      setHasTradeUrl(false);
     }
   }, []);
 
-  // Fetch inventory
+  // Handle tRPC errors
   useEffect(() => {
-    if (isOpen && steamId) {
-      fetchInventory();
-    }
-  }, [isOpen, steamId, inventoryRefreshKey]);
-
-  const fetchInventory = async () => {
-    setIsLoading(true);
-    try {
-      const res = await fetch(`/api/steam/inventory?steamId=${steamId}&casesOnly=true`);
-      const data = await res.json();
-      setInventory(data.items || []);
-      
-      // Also fetch user's bet history for empty state context
-      try {
-        const betsRes = await api.get("/me/bets");
-        if (betsRes.data?.bets) {
-          const bets = betsRes.data.bets;
-          const totalCases = bets.reduce((sum: number, bet: any) => sum + (bet.item_count || 0), 0);
-          setUserBetHistory({
-            totalBets: bets.length,
-            totalCases: totalCases
-          });
-          // Count pending bets (both 'pending' and 'sent' statuses block new bets)
-          const pendingCount = bets.filter((bet: any) =>
-            bet.trade_status === 'pending' || bet.trade_status === 'sent'
-          ).length;
-          setPendingBets(pendingCount);
-        }
-      } catch {
-        // Silently fail - bet history is just for display
-        setUserBetHistory(null);
-        setPendingBets(0);
+    if (inventoryQuery.error) {
+      const errorMessage = inventoryQuery.error.message;
+      if (errorMessage.includes("Steam account not linked")) {
+        setError("Please link your Steam account in your profile to bet");
+      } else if (errorMessage.includes("not authenticated")) {
+        setError("Please login to place bets");
+      } else {
+        setError("Failed to load inventory");
       }
-    } catch {
-      setError("Failed to load inventory");
-    } finally {
-      setIsLoading(false);
     }
-  };
+  }, [inventoryQuery.error]);
+
+  // TODO: Fetch user's bet history via tRPC once auth worker has bets.list procedure
+  // For now, skip this since backend only supports tRPC
+  useEffect(() => {
+    setUserBetHistory(null);
+    setPendingBets(0);
+  }, []);
 
   const handleDragStart = (event: DragStartEvent) => {
     const item = groupedInventory.find((i) => i.classId === event.active.id);
@@ -433,15 +482,20 @@ export default function BetModal({ isOpen, onClose, onSuccess, market, outcome }
   const handleQuantityConfirm = (quantity: number) => {
     if (!selectedItemForPool) return;
 
-    const assetIdsToAdd = selectedItemForPool.availableAssetIds.slice(0, quantity);
+    const assetIdsToAdd = selectedItemForPool.availableAssetIds.slice(
+      0,
+      quantity,
+    );
 
     setPool((prev) => {
-      const existing = prev.find((p) => p.classId === selectedItemForPool.classId);
+      const existing = prev.find(
+        (p) => p.classId === selectedItemForPool.classId,
+      );
       if (existing) {
         return prev.map((p) =>
           p.classId === selectedItemForPool.classId
             ? { ...p, assetIds: [...p.assetIds, ...assetIdsToAdd] }
-            : p
+            : p,
         );
       }
       return [
@@ -481,7 +535,7 @@ export default function BetModal({ isOpen, onClose, onSuccess, market, outcome }
         }
         return p;
       });
-      
+
       // Filter out items with 0 assetIds
       return updated.filter((p) => p.assetIds.length > 0);
     });
@@ -500,30 +554,87 @@ export default function BetModal({ isOpen, onClose, onSuccess, market, outcome }
       return;
     }
 
+    if (!tradeUrl || tradeUrl.trim() === "") {
+      setError("Please enter your Steam trade URL");
+      setHasTradeUrl(false);
+      return;
+    }
+
     setIsSubmitting(true);
     setError(null);
 
     try {
-      const assetIds = pool.flatMap((item) => item.assetIds);
+      console.log("[BetModal] Pool items on confirm:", pool);
+      console.log(
+        "[BetModal] Flattened assetIds:",
+        pool.flatMap((item) => item.assetIds),
+      );
 
-      const res = await api.post("/bets", {
+      // Map pool items to full inventory assets
+      const poolAssetIds = pool.flatMap((item) => item.assetIds);
+      const selectedItems = inventory.filter((item) =>
+        poolAssetIds.includes(item.assetId),
+      );
+
+      console.log("[BetModal] Selected items for trade:", selectedItems);
+
+      // Build the payload
+      const payload = {
         slug: market.slug,
-        market_id: market.market_id,
-        outcome,
-        asset_ids: assetIds,
-        trade_url: tradeUrl,
+        id: market.id,
+        marketOutcome: outcome === "yes" ? 1 : 0,
+        tradeUrl: tradeUrl,
+        message: "Bet on " + market.question,
+        items: selectedItems.map((item) => ({
+          appid: "730",
+          contextid: "2",
+          assetid: item.assetId,
+          classid: item.classId,
+          instanceid: "0",
+          icon_url: item.iconUrl.replace(
+            "https://steamcommunity-a.akamaihd.net/economy/image/",
+            "",
+          ),
+          background_color: "",
+          name: item.name,
+        })),
+      };
+
+      // Validate payload client-side before sending
+      try {
+        PlaceBetSchema.parse(payload);
+        console.log("[BetModal] Payload validated successfully");
+      } catch (validationError: any) {
+        console.error("[BetModal] Validation error:", validationError);
+        setError(`Validation error: ${validationError.errors?.map((e: any) => `${e.path.join('.')}: ${e.message}`).join(', ')}`);
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Call the bet.trade procedure
+      const result = await betTradeMutation.mutateAsync(payload);
+
+      console.log("[BetModal] bet.trade result:", result);
+
+      // Clear pool after successful bet
+      setPool([]);
+      inventoryQuery.refetch();
+
+      onSuccess?.({
+        bet_id: result.marketId,
+        market_slug: market.slug,
+        market_id: market.id,
+        outcome: outcome,
+        trade_offer_id: result.tradeId || "",
+        trade_status: "pending",
+        trade_expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+        item_count: result.itemsBet,
       });
 
-      // Clear pool and refresh inventory after successful bet
-      setPool([]);
-      setInventoryRefreshKey(prev => prev + 1);
-      
-      onSuccess?.(res.data);
       onClose();
     } catch (err: any) {
-      console.error('[BetModal] Error placing bet:', err);
-      console.error('[BetModal] Error response:', err.response?.data);
-      setError(err.response?.data?.error || "Failed to place bet");
+      console.error("[BetModal] Error placing bet:", err);
+      setError("Failed to place bet");
     } finally {
       setIsSubmitting(false);
     }
@@ -531,10 +642,51 @@ export default function BetModal({ isOpen, onClose, onSuccess, market, outcome }
 
   if (!isOpen) return null;
 
-  const totalPoolCases = pool.reduce((sum, item) => sum + item.assetIds.length, 0);
+  const totalPoolCases = pool.reduce(
+    (sum, item) => sum + item.assetIds.length,
+    0,
+  );
+
+  // If market is resolved, show resolved state instead of betting interface
+  if (isResolved) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+        <div className="bg-zinc-950 border border-zinc-800 rounded-xl max-w-md w-full p-8 text-center">
+          <div className="w-16 h-16 bg-zinc-800 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg
+              className="w-8 h-8 text-zinc-500"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M5 13l4 4L19 7"
+              />
+            </svg>
+          </div>
+          <h3 className="text-lg font-semibold text-white mb-2">
+            {resolvedReason}
+          </h3>
+          <p className="text-zinc-400 text-sm mb-6">
+            This market is no longer accepting bets.
+          </p>
+          <button
+            onClick={onClose}
+            className="px-6 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg font-medium transition-colors"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   // Check if there's an auth error
-  const isAuthError = error?.includes("login") || error?.includes("Steam account");
+  const isAuthError =
+    error?.includes("login") || error?.includes("Steam account");
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
@@ -542,23 +694,35 @@ export default function BetModal({ isOpen, onClose, onSuccess, market, outcome }
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-zinc-800">
           <div className="flex items-center gap-3">
-            {market.icon_url && (
-              <img src={market.icon_url} alt="" className="w-10 h-10 rounded-lg object-cover" />
+            {market.icon && (
+              <img
+                src={market.icon}
+                alt=""
+                className="w-10 h-10 rounded-lg object-cover"
+              />
             )}
             <div>
               <h3 className="font-semibold text-white">{market.question}</h3>
               <p className="text-sm text-zinc-500">
                 Betting:{" "}
-                <span className={outcome === "yes" ? "text-emerald-400" : "text-rose-400"}>
+                <span
+                  className={
+                    outcome === "yes" ? "text-emerald-400" : "text-rose-400"
+                  }
+                >
                   {outcome.toUpperCase()}
                 </span>
               </p>
               <p className="text-xs text-amber-400 mt-1">
-                Betting closes: {new Date(market.betting_closes_at).toLocaleString()}
+                Betting closes:{" "}
+                {market.endDate ? market.endDate.toLocaleString() : "Unknown"}
               </p>
             </div>
           </div>
-          <button onClick={onClose} className="text-zinc-500 hover:text-white text-2xl">
+          <button
+            onClick={onClose}
+            className="text-zinc-500 hover:text-white text-2xl"
+          >
             ×
           </button>
         </div>
@@ -567,7 +731,12 @@ export default function BetModal({ isOpen, onClose, onSuccess, market, outcome }
         {isAuthError && (
           <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
             <div className="w-16 h-16 bg-zinc-900 rounded-full flex items-center justify-center mb-4">
-              <svg className="w-8 h-8 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg
+                className="w-8 h-8 text-zinc-500"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -577,7 +746,9 @@ export default function BetModal({ isOpen, onClose, onSuccess, market, outcome }
               </svg>
             </div>
             <h4 className="text-lg font-medium text-white mb-2">
-              {error?.includes("Steam") ? "Steam Account Required" : "Login Required"}
+              {error?.includes("Steam")
+                ? "Steam Account Required"
+                : "Login Required"}
             </h4>
             <p className="text-zinc-400 text-sm mb-6 max-w-sm">
               {error?.includes("Steam")
@@ -612,7 +783,9 @@ export default function BetModal({ isOpen, onClose, onSuccess, market, outcome }
 
                 {/* Trade URL Section */}
                 <div className="mt-4 p-3 bg-zinc-900 rounded-lg">
-                  <h4 className="text-sm font-medium text-zinc-400 mb-2">Trade URL</h4>
+                  <h4 className="text-sm font-medium text-zinc-400 mb-2">
+                    Trade URL
+                  </h4>
                   {!hasTradeUrl ? (
                     <div className="space-y-2">
                       <input
@@ -631,7 +804,9 @@ export default function BetModal({ isOpen, onClose, onSuccess, market, outcome }
                     </div>
                   ) : (
                     <div className="flex items-center justify-between">
-                      <span className="text-xs text-zinc-500 truncate flex-1">{tradeUrl}</span>
+                      <span className="text-xs text-zinc-500 truncate flex-1">
+                        {tradeUrl}
+                      </span>
                       <button
                         onClick={() => setHasTradeUrl(false)}
                         className="text-xs text-zinc-500 hover:text-white ml-2"
@@ -646,9 +821,15 @@ export default function BetModal({ isOpen, onClose, onSuccess, market, outcome }
                 {pendingBets > 0 && (
                   <div className="mt-3 p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg">
                     <p className="text-sm text-amber-400">
-                      <span className="font-semibold">⚠️ You have {pendingBets} pending trade{pendingBets !== 1 ? 's' : ''}</span>
+                      <span className="font-semibold">
+                        ⚠️ You have {pendingBets} pending trade
+                        {pendingBets !== 1 ? "s" : ""}
+                      </span>
                       <br />
-                      <span className="text-xs">Accept your pending trade(s) in Steam before placing new bets.</span>
+                      <span className="text-xs">
+                        Accept your pending trade(s) in Steam before placing new
+                        bets.
+                      </span>
                     </p>
                   </div>
                 )}
@@ -659,7 +840,10 @@ export default function BetModal({ isOpen, onClose, onSuccess, market, outcome }
                     <p className="text-sm text-rose-400">
                       <span className="font-semibold">No items available</span>
                       <br />
-                      <span className="text-xs">You need CS2 cases in your Steam inventory to place bets.</span>
+                      <span className="text-xs">
+                        You need CS2 cases in your Steam inventory to place
+                        bets.
+                      </span>
                     </p>
                   </div>
                 )}
@@ -667,54 +851,85 @@ export default function BetModal({ isOpen, onClose, onSuccess, market, outcome }
                 {/* Confirm Button */}
                 <button
                   onClick={handleSubmit}
-                  disabled={isSubmitting || totalPoolCases === 0 || !hasTradeUrl || !canPlaceBets}
+                  disabled={
+                    isSubmitting ||
+                    totalPoolCases === 0 ||
+                    !hasTradeUrl ||
+                    !canPlaceBets
+                  }
                   className="mt-4 w-full py-3 bg-white text-black font-semibold rounded-lg hover:bg-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
-                  {isSubmitting ? "Sending Trade..." : 
-                   !hasItems ? "No Items Available" : 
-                   !hasTradeUrl ? "Set Trade URL First" :
-                   totalPoolCases === 0 ? "Add Items to Pool" :
-                   pendingBets > 0 ? `Pending Trades (${pendingBets})` : 
-                   `Confirm Bet (${totalPoolCases} cases)`}
+                  {isSubmitting
+                    ? "Sending Trade..."
+                    : !hasItems
+                      ? "No Items Available"
+                      : !hasTradeUrl
+                        ? "Set Trade URL First"
+                        : totalPoolCases === 0
+                          ? "Add Items to Pool"
+                          : pendingBets > 0
+                            ? `Pending Trades (${pendingBets})`
+                            : `Confirm Bet (${totalPoolCases} cases)`}
                 </button>
 
-                {error && <p className="mt-2 text-sm text-rose-400 text-center">{error}</p>}
+                {error && (
+                  <p className="mt-2 text-sm text-rose-400 text-center">
+                    {error}
+                  </p>
+                )}
               </div>
 
               {/* Right - Inventory */}
               <div className="w-2/3 p-4 flex flex-col">
                 <div className="flex items-center justify-between mb-3">
-                  <h4 className="text-sm font-medium text-zinc-400">Your Inventory</h4>
+                  <h4 className="text-sm font-medium text-zinc-400">
+                    Your Inventory
+                  </h4>
                   <span className="text-xs text-zinc-500">
                     Page {currentPage} of {totalPages}
                   </span>
                 </div>
 
-                {isLoading ? (
+                {inventoryQuery.isLoading ? (
                   <div className="flex-1 flex items-center justify-center text-zinc-500">
                     Loading inventory...
                   </div>
                 ) : groupedInventory.length === 0 ? (
                   <div className="flex-1 flex flex-col items-center justify-center text-center p-6">
                     <div className="w-16 h-16 bg-zinc-900 rounded-full flex items-center justify-center mb-4">
-                      <svg className="w-8 h-8 text-zinc-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                      <svg
+                        className="w-8 h-8 text-zinc-600"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"
+                        />
                       </svg>
                     </div>
-                    <h4 className="text-lg font-semibold text-white mb-2">No Tradable Items</h4>
+                    <h4 className="text-lg font-semibold text-white mb-2">
+                      No Tradable Items
+                    </h4>
                     <p className="text-zinc-400 text-sm mb-4 max-w-xs">
                       Your Steam inventory has no tradable CS2 cases available.
                     </p>
                     {userBetHistory && userBetHistory.totalBets > 0 && (
                       <div className="bg-zinc-900/50 rounded-lg p-4 mb-4 w-full max-w-xs">
                         <p className="text-sm text-zinc-300 mb-2">
-                          <span className="font-semibold">Cases you've traded:</span>
+                          <span className="font-semibold">
+                            Cases you've traded:
+                          </span>
                         </p>
                         <p className="text-2xl font-bold text-emerald-400 mb-1">
                           {userBetHistory.totalCases} cases
                         </p>
                         <p className="text-xs text-zinc-500">
-                          Across {userBetHistory.totalBets} bet{userBetHistory.totalBets !== 1 ? 's' : ''}
+                          Across {userBetHistory.totalBets} bet
+                          {userBetHistory.totalBets !== 1 ? "s" : ""}
                         </p>
                       </div>
                     )}
@@ -746,7 +961,9 @@ export default function BetModal({ isOpen, onClose, onSuccess, market, outcome }
                     {totalPages > 1 && (
                       <div className="flex items-center justify-center gap-2 mt-3 pt-3 border-t border-zinc-800">
                         <button
-                          onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                          onClick={() =>
+                            setCurrentPage((p) => Math.max(1, p - 1))
+                          }
                           disabled={currentPage === 1}
                           className="px-3 py-1 bg-zinc-900 rounded text-sm disabled:opacity-50"
                         >
@@ -756,7 +973,9 @@ export default function BetModal({ isOpen, onClose, onSuccess, market, outcome }
                           {currentPage} / {totalPages}
                         </span>
                         <button
-                          onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                          onClick={() =>
+                            setCurrentPage((p) => Math.min(totalPages, p + 1))
+                          }
                           disabled={currentPage === totalPages}
                           className="px-3 py-1 bg-zinc-900 rounded text-sm disabled:opacity-50"
                         >

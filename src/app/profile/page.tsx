@@ -1,77 +1,15 @@
-'use client';
+"use client";
 
 import SteamProfileCard from "@/components/SteamProfileCard";
-import { type SteamProfile } from "@/proto/steam/steam";
-import { auth } from "@/lib/firebase";
-import { useEffect, useState } from "react";
+import { useTRPC } from "@/trpc/client";
+import { useQuery } from "@tanstack/react-query";
+import Link from "next/link";
 
 export default function ProfilePage() {
-  const [summary, setSummary] = useState<SteamProfile | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const trpc = useTRPC();
+  const profileQuery = useQuery(trpc.user.profile.queryOptions());
 
-  useEffect(() => {
-    async function fetchProfile() {
-      try {
-        const user = auth.currentUser;
-        if (!user) {
-          setError("Not logged in");
-          setLoading(false);
-          return;
-        }
-
-        // Get the ID token result which includes custom claims
-        const tokenResult = await user.getIdTokenResult();
-        const steamId = tokenResult.claims.steam_id as string | undefined;
-
-        if (!steamId) {
-          setError("Steam account not linked");
-          setLoading(false);
-          return;
-        }
-
-        // Fetch profile from Next.js API route (which calls Steam gRPC + Redis cache)
-        const res = await fetch(`/api/steam/profile?steamId=${steamId}`);
-        
-        if (!res.ok) {
-          let errorMessage = "Failed to fetch profile";
-          const contentType = res.headers.get("content-type") || "";
-          if (contentType.includes("application/json")) {
-            const data = await res.json();
-            errorMessage = data.error || errorMessage;
-          } else {
-            const text = await res.text();
-            if (text) errorMessage = text;
-          }
-          setError(errorMessage);
-          setLoading(false);
-          return;
-        }
-
-        const profile = await res.json();
-        setSummary(profile);
-      } catch (err) {
-        console.error("Failed to fetch profile:", err);
-        setError("Failed to fetch profile");
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    // Wait for auth state to be ready
-    const unsubscribe = auth.onAuthStateChanged((user) => {
-      if (user) {
-        fetchProfile();
-      } else {
-        setError("Not logged in");
-        setLoading(false);
-      }
-    });
-
-    return () => unsubscribe();
-  }, []);
-
-  if (loading) {
+  if (profileQuery.isLoading) {
     return (
       <div className="min-h-screen bg-[#0a0a0f] flex items-center justify-center font-mono text-zinc-500 text-sm">
         <span className="animate-pulse">Loading profile…</span>
@@ -79,15 +17,34 @@ export default function ProfilePage() {
     );
   }
 
-  if (error) {
+  if (profileQuery.error) {
+    const errorMessage = profileQuery.error.message;
+
+    // Handle specific error cases
+    if (errorMessage.includes("Steam account not linked")) {
+      return (
+        <div className="min-h-screen bg-[#0a0a0f] flex items-center justify-center font-mono text-sm">
+          <div className="text-center">
+            <p className="text-zinc-400 mb-4">Steam account not linked</p>
+            <Link
+              href="/link-steam"
+              className="px-6 py-2 bg-emerald-500 hover:bg-emerald-600 text-black rounded-lg font-medium transition-colors inline-block"
+            >
+              Link Steam Account
+            </Link>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="min-h-screen bg-[#0a0a0f] flex items-center justify-center font-mono text-red-500 text-sm">
-        <span>{error}</span>
+        <span>{errorMessage}</span>
       </div>
     );
   }
 
-  if (!summary) {
+  if (!profileQuery.data) {
     return (
       <div className="min-h-screen bg-[#0a0a0f] flex items-center justify-center font-mono text-zinc-500 text-sm">
         <span>Profile not found</span>
@@ -95,5 +52,5 @@ export default function ProfilePage() {
     );
   }
 
-  return <SteamProfileCard profile={summary} />;
+  return <SteamProfileCard profile={profileQuery.data} />;
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { OurMarket } from "@skinshi/auth-worker/schemas";
 
 interface BetSuccessModalProps {
   isOpen: boolean;
@@ -15,10 +16,7 @@ interface BetSuccessModalProps {
     trade_expires_at: string;
     item_count: number;
   } | null;
-  market: {
-    question: string;
-    icon_url: string;
-  };
+  market: OurMarket;
   onTimerComplete: () => void;
 }
 
@@ -153,9 +151,9 @@ export default function BetSuccessModal({
         {/* Market Info */}
         <div className="bg-zinc-900/50 rounded-lg p-4 mb-4">
           <div className="flex items-start gap-3">
-            {market.icon_url && (
+            {market.icon && (
               <img
-                src={market.icon_url}
+                src={market.icon}
                 alt=""
                 className="w-10 h-10 rounded-lg object-cover flex-shrink-0"
               />

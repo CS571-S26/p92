@@ -1,133 +1,74 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
-import { auth } from "@/lib/firebase";
-import api from "@/utils/axios";
-import { type SteamProfile } from "@/proto/steam/steam";
-
+import { useTRPC } from "@/trpc/client";
+import { useQuery } from "@tanstack/react-query";
+import { type SteamProfile } from "@skinshi/steam-service/schemas";
 // Helper to construct avatar URLs from avatarHash
 function avatarUrl(hash: string, size?: "medium" | "full") {
   const suffix = size === "full" ? "_full" : size === "medium" ? "_medium" : "";
   return `https://avatars.steamstatic.com/${hash}${suffix}.jpg`;
 }
 
-interface Bet {
-  bet_id: string;
-  market_id: string;
-  market_slug: string;
-  market_question: string;
-  outcome: string;
-  trade_status: string;
-  item_count: number;
-  trade_offer_id: string;
-  created_at: string;
-}
 
-interface InventoryItem {
-  assetId: string;
-  name: string;
-  iconUrl: string;
-  tradable: boolean;
-}
 
 export default function SettingsPage() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<"profile" | "inventory" | "trades">("profile");
-  const [steamProfile, setSteamProfile] = useState<SteamProfile | null>(null);
-  const [bets, setBets] = useState<Bet[]>([]);
-  const [inventory, setInventory] = useState<InventoryItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const trpc = useTRPC();
 
-  useEffect(() => {
-    // Wait for auth state to be ready
-    const unsubscribe = auth.onAuthStateChanged((user) => {
-      if (user) {
-        fetchData();
-      } else {
-        setError("Not logged in");
-        setLoading(false);
-      }
-    });
+  // Fetch Steam profile using tRPC
+  const profileQuery = useQuery(trpc.user.profile.queryOptions());
 
-    return () => unsubscribe();
-  }, []);
+  // Fetch inventory using tRPC
+  const inventoryQuery = useQuery(trpc.user.inventory.queryOptions());
 
-  const fetchData = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      // Get steam_id from JWT claims
-      const currentUser = auth.currentUser;
-      if (!currentUser) {
-        setError("Not authenticated");
-        setLoading(false);
-        return;
-      }
-
-      const tokenResult = await currentUser.getIdTokenResult();
-      const steamId = tokenResult.claims.steam_id as string | undefined;
-
-      if (!steamId) {
-        setError("Steam account not linked");
-        setLoading(false);
-        return;
-      }
-
-      // Fetch profile
-      const profileRes = await fetch(`/api/steam/profile?steamId=${steamId}`);
-      if (!profileRes.ok) {
-        const errorData = await profileRes.json().catch(() => ({}));
-        throw new Error(errorData.error || `Failed to fetch profile: ${profileRes.status}`);
-      }
-      const profileData = await profileRes.json();
-      setSteamProfile(profileData);
-
-      // Fetch bets (authenticated endpoint)
-      try {
-        const betsRes = await api.get("/me/bets");
-        if (betsRes.data?.bets) {
-          setBets(betsRes.data.bets);
-        }
-      } catch (err: any) {
-        console.error("Failed to fetch bets:", err);
-      }
-
-      // Fetch inventory
-      try {
-        const inventoryRes = await fetch(`/api/steam/inventory?steamId=${steamId}&casesOnly=true`);
-        if (inventoryRes.ok) {
-          const inventoryData = await inventoryRes.json();
-          if (inventoryData.items) {
-            setInventory(inventoryData.items);
-          }
-        }
-      } catch (err) {
-        console.error("Failed to fetch inventory:", err);
-      }
-    } catch (err: any) {
-      console.error("Failed to load settings data:", err);
-      setError(err.message || "Failed to load settings data");
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Fetch bets using tRPC
+  const betsQuery = useQuery(trpc.user.bets.queryOptions());
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case "accepted":
+      case "won":
         return "bg-emerald-500/20 text-emerald-400 border-emerald-500/30";
-      case "pending":
+      case "active":
         return "bg-amber-500/20 text-amber-400 border-amber-500/30";
-      case "declined":
-      case "expired":
+      case "lost":
+      case "cancelled":
         return "bg-rose-500/20 text-rose-400 border-rose-500/30";
       default:
         return "bg-zinc-800 text-zinc-400 border-zinc-700";
     }
   };
+
+  // Get profile data with proper typing
+  const steamProfile: SteamProfile | null = profileQuery.data ?? null;
+
+  // Get inventory items and group by classid
+  const inventory = inventoryQuery.data?.items ?? [];
+
+  // Group inventory items by classid
+  const groupedInventory = inventory.reduce((acc, item) => {
+    const existing = acc.find((group) => group.classid === item.classid);
+    if (existing) {
+      existing.count++;
+    } else {
+      acc.push({
+        classid: item.classid,
+        name: item.name,
+        icon_url: item.icon_url,
+        count: 1,
+      });
+    }
+    return acc;
+  }, [] as Array<{ classid: string; name: string; icon_url: string; count: number }>);
+
+  // Combined loading state
+  const isLoading = profileQuery.isLoading || inventoryQuery.isLoading || betsQuery.isLoading;
+
+  // Combined error state
+  const error = profileQuery.error?.message || inventoryQuery.error?.message || betsQuery.error?.message || null;
 
   if (!user) {
     return (
@@ -142,7 +83,7 @@ export default function SettingsPage() {
     );
   }
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="min-h-screen bg-black text-white flex items-center justify-center">
         <div className="text-zinc-400">Loading settings...</div>
@@ -152,6 +93,7 @@ export default function SettingsPage() {
 
   // Show error state
   if (error) {
+    const isSteamNotLinked = error.includes("Steam account not linked");
     return (
       <div className="min-h-screen bg-black text-white flex items-center justify-center">
         <div className="text-center max-w-md mx-auto px-4">
@@ -162,7 +104,7 @@ export default function SettingsPage() {
           </div>
           <h2 className="text-xl font-semibold text-white mb-2">Error</h2>
           <p className="text-zinc-400 mb-6">{error}</p>
-          {error === "Steam account not linked" && (
+          {isSteamNotLinked && (
             <Link
               href="/link-steam"
               className="px-6 py-2 bg-emerald-500 hover:bg-emerald-600 text-black rounded-lg font-medium transition-colors inline-block"
@@ -210,7 +152,7 @@ export default function SettingsPage() {
                 : "text-zinc-400 hover:text-white"
             }`}
           >
-            My Trades ({bets.length})
+            My Trades ({betsQuery.data?.length ?? 0})
           </button>
         </div>
 
@@ -229,9 +171,9 @@ export default function SettingsPage() {
                   />
                   <div>
                     <h3 className="text-lg font-medium text-white">{steamProfile.name}</h3>
-                    <p className="text-sm text-zinc-500">Steam ID: {steamProfile.steamId}</p>
+                    <p className="text-sm text-zinc-500">Steam ID: {steamProfile.steamID}</p>
                     <Link
-                      href={`https://steamcommunity.com/profiles/${steamProfile.steamId}`}
+                      href={`https://steamcommunity.com/profiles/${steamProfile.steamID}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-emerald-400 text-sm hover:underline mt-1 inline-block"
@@ -287,24 +229,26 @@ export default function SettingsPage() {
         {/* Inventory Tab */}
         {activeTab === "inventory" && (
           <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-6">
-            <h2 className="text-xl font-semibold mb-4">Your Inventory</h2>
-            {inventory.length > 0 ? (
+            <h2 className="text-xl font-semibold mb-4">Your Inventory ({inventory.length} items)</h2>
+            {groupedInventory.length > 0 ? (
               <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3">
-                {inventory.map((item) => (
+                {groupedInventory.map((item) => (
                   <div
-                    key={item.assetId}
-                    className="bg-zinc-900 border border-zinc-800 rounded-lg p-3 aspect-square flex flex-col items-center justify-center"
+                    key={item.classid}
+                    className="bg-zinc-900 border border-zinc-800 rounded-lg p-3 aspect-square flex flex-col items-center justify-center relative"
                   >
                     <img
-                      src={item.iconUrl}
+                      src={`https://steamcommunity-a.akamaihd.net/economy/image/${item.icon_url}`}
                       alt={item.name}
                       className="w-full h-full max-h-[60%] object-contain mb-2"
                     />
                     <p className="text-xs text-zinc-300 truncate w-full text-center px-1">
                       {item.name}
                     </p>
-                    {!item.tradable && (
-                      <span className="text-[10px] text-amber-400 mt-1">Not Tradable</span>
+                    {item.count > 1 && (
+                      <span className="absolute top-2 right-2 bg-emerald-500 text-black text-xs font-bold px-2 py-0.5 rounded-full">
+                        ×{item.count}
+                      </span>
                     )}
                   </div>
                 ))}
@@ -319,59 +263,76 @@ export default function SettingsPage() {
         {activeTab === "trades" && (
           <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-6">
             <h2 className="text-xl font-semibold mb-4">Your Trades</h2>
-            {bets.length > 0 ? (
+            {betsQuery.isLoading ? (
+              <p className="text-zinc-400">Loading trades...</p>
+            ) : betsQuery.data && betsQuery.data.length > 0 ? (
               <div className="space-y-3">
-                {bets.map((bet) => (
-                  <div
-                    key={bet.bet_id}
-                    className="bg-zinc-900 border border-zinc-800 rounded-lg p-4"
-                  >
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="flex-1 min-w-0">
-                        <h3 className="text-white font-medium truncate">
-                          {bet.market_question || bet.market_slug}
-                        </h3>
-                        <p className="text-sm text-zinc-400 mt-1">
-                          {bet.item_count} cases •{" "}
-                          <span className={bet.outcome === "yes" ? "text-emerald-400" : "text-rose-400"}>
-                            {bet.outcome.toUpperCase()}
-                          </span>
-                        </p>
-                      </div>
-                      <span
-                        className={`px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(
-                          bet.trade_status
-                        )}`}
-                      >
-                        {bet.trade_status}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-zinc-500">
-                        {new Date(bet.created_at).toLocaleDateString()}
-                      </span>
-                      {bet.trade_offer_id && bet.trade_status === "pending" && (
-                        <a
-                          href={`https://steamcommunity.com/tradeoffer/${bet.trade_offer_id}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-emerald-400 hover:underline"
+                {betsQuery.data.map((bet) => {
+                  // marketOutcome: 1=yes, 0=no
+                  const sideLabel = bet.marketOutcome === 1 ? 'YES' : 'NO';
+                  const sideColor = bet.marketOutcome === 1 ? 'text-emerald-400' : 'text-rose-400';
+                  
+                  return (
+                    <div
+                      key={`${bet.steamId}-${bet.marketId}`}
+                      className="bg-zinc-900 border border-zinc-800 rounded-lg p-4"
+                    >
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className={`text-xs font-bold ${sideColor}`}>{sideLabel}</span>
+                            <span className="text-zinc-600">•</span>
+                            <h3 className="text-white font-medium truncate text-sm">
+                              {bet.marketId}
+                            </h3>
+                          </div>
+                          <p className="text-sm text-zinc-400 mt-1">
+                            Bet: x{bet.buyIn.items.length} cases
+                          </p>
+                        </div>
+                        <span
+                          className={`px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(
+                            bet.status
+                          )}`}
                         >
-                          View Trade →
-                        </a>
-                      )}
-                      {bet.trade_status === "accepted" && (
-                        <span className="text-emerald-400">Trade Complete</span>
-                      )}
-                      {(bet.trade_status === "declined" || bet.trade_status === "expired") && (
-                        <span className="text-rose-400">Trade Failed</span>
+                          {bet.status}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-zinc-500">
+                          {new Date(bet.createdAt * 1000).toLocaleDateString()}
+                        </span>
+                        {bet.status === "active" && (
+                          <span className="text-amber-400">In Progress</span>
+                        )}
+                        {bet.status === "payout_pending" && (
+                          <span className="text-amber-400">Ready to Claim</span>
+                        )}
+                        {bet.status === "paid" && (
+                          <span className="text-emerald-400">Paid Out</span>
+                        )}
+                        {(bet.status === "lost" || bet.status === "cancelled") && (
+                          <span className="text-rose-400">{bet.status === "lost" ? "Lost" : "Cancelled"}</span>
+                        )}
+                      </div>
+                      {bet.status === 'paid' && bet.payout && (
+                        <div className="mt-3 rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-2">
+                          <p className="text-xs text-emerald-300">
+                            Payout: x{bet.payout.items.length} cases received
+                          </p>
+                        </div>
                       )}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
-              <p className="text-zinc-400">No trades yet.</p>
+              <div className="text-center py-8">
+                <p className="text-zinc-400">No trades yet.</p>
+                <p className="mt-2 text-xs text-zinc-600">
+                  Place a bet on a market to see your trades here.
+                </p>
+              </div>
             )}
           </div>
         )}

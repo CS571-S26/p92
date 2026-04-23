@@ -1,13 +1,14 @@
 'use client';
 
 import { auth } from '@/lib/firebase';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 
 export default function SuccessPage() {
   const router = useRouter();
   const [secondsLeft, setSecondsLeft] = useState(5);
   const [status, setStatus] = useState('Finalizing Steam link...');
+  const hasRedirected = useRef(false);
 
   useEffect(() => {
     let mounted = true;
@@ -35,7 +36,6 @@ export default function SuccessPage() {
       setSecondsLeft((prev) => {
         if (prev <= 1) {
           clearInterval(countdown);
-          router.replace('/profile');
           return 0;
         }
         return prev - 1;
@@ -46,7 +46,15 @@ export default function SuccessPage() {
       mounted = false;
       clearInterval(countdown);
     };
-  }, [router]);
+  }, []);
+
+  // Handle navigation in a separate effect to avoid setState during render
+  useEffect(() => {
+    if (secondsLeft === 0 && !hasRedirected.current) {
+      hasRedirected.current = true;
+      router.replace('/profile');
+    }
+  }, [secondsLeft, router]);
 
   return (
     <div className="min-h-screen bg-[#0a0a0f] flex items-center justify-center px-4">

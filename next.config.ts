@@ -2,15 +2,16 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   reactCompiler: true,
-  output: 'standalone',
+  transpilePackages: [
+    "@skinshi/auth-worker",
+    "@skinshi/polymarket-service",
+    "@skinshi/steam-service",
+  ],
+  env: {
+    AUTH_WORKER_URL: process.env.AUTH_WORKER_URL || "https://auth.skinshi.com",
+  },
   async rewrites() {
-    if (process.env.NODE_ENV !== "development") return [];
-    return [
-      {
-        source: "/api/:path*",
-        destination: "http://localhost:8080/api/:path*",
-      },
-    ];
+    return [];
   },
 };
 

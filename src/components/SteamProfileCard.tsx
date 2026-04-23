@@ -1,26 +1,8 @@
 'use client';
 
 import { useState } from "react";
-import { type SteamProfile } from "@/proto/steam/steam";
+import { type SteamProfile } from "@skinshi/steam-service/schemas";
 import { formatDate } from "@/utils/dateUtils";
-
-const MOCK: SteamProfile = {
-  steamId: "76561198123456789",
-  name: "HeyDay",
-  onlineState: "online",
-  stateMessage: "Online",
-  privacyState: "public",
-  visibilityState: "3",
-  avatarHash: "e8dffbe2504a7ea75ef2639f093be6e8215063e3",
-  vacBanned: false,
-  tradeBanState: "None",
-  isLimitedAccount: false,
-  customUrl: "heydaytime",
-  memberSince: "2019-11-09T06:00:00.000Z",
-  location: "Vatican City State (Holy See)",
-  realName: "Mihir",
-  summary: "",
-};
 
 const ONLINE_STATE_STYLES: Record<string, { label: string; dot: string; badge: string }> = {
   online: { label: "Online", dot: "bg-emerald-400", badge: "bg-emerald-500/20 text-emerald-400" },
@@ -45,7 +27,7 @@ function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
-export default function SteamProfileCard({ profile = MOCK }: { profile?: SteamProfile }) {
+export default function SteamProfileCard({ profile }: { profile: SteamProfile }) {
   const [avatarErr, setAvatarErr] = useState(false);
   const state = ONLINE_STATE_STYLES[profile.onlineState] ?? ONLINE_STATE_STYLES.offline;
 
@@ -142,7 +124,7 @@ export default function SteamProfileCard({ profile = MOCK }: { profile?: SteamPr
         <div className="px-5 py-4 border-t border-white/5">
 
           <a
-            href={`https://steamcommunity.com/id/${profile.customUrl}`}
+            href={`https://steamcommunity.com/id/${profile.customURL}`}
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center justify-center gap-2 w-full py-2.5 rounded-lg bg-[#1b2838] hover:bg-[#2a475e] text-[#c6d4df] text-sm transition-colors duration-150 border border-white/5 hover:border-white/10"
