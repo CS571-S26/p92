@@ -1,6 +1,6 @@
 import { createTRPCClient, httpBatchLink } from '@trpc/client';
 import superjson from 'superjson';
-import type { AppRouter } from '@skinshi/auth-worker/router';
+import type { AppRouter } from '@skinshi/api/router';
 
 const AUTH_WORKER_URL = process.env.AUTH_WORKER_URL || 'https://auth.skinshi.com';
 

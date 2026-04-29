@@ -50,7 +50,7 @@ export default function RefreshPage() {
       <div className="w-full max-w-md rounded-xl border border-white/10 bg-[#141721] p-6 text-zinc-100">
         <h1 className="text-lg font-semibold">Auth Token Refresh</h1>
         <p className="mt-3 text-sm text-zinc-300">{status}</p>
-        {details && <p className="mt-2 text-xs text-zinc-500 break-all">{details}</p>}
+        {details && <p className="mt-2 text-xs text-zinc-400 break-all">{details}</p>}
       </div>
     </div>
   );

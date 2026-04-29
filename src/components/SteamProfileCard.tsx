@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { type SteamProfile } from "@skinshi/steam-service/schemas";
-import { formatDate } from "@/utils/dateUtils";
+import { formatDate } from "@skinshi/utils";
 
 const ONLINE_STATE_STYLES: Record<string, { label: string; dot: string; badge: string }> = {
   online: { label: "Online", dot: "bg-emerald-400", badge: "bg-emerald-500/20 text-emerald-400" },
@@ -21,7 +21,7 @@ function avatarUrl(hash: string, size?: "medium" | "full") {
 function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex items-start justify-between gap-4 py-2.5 border-b border-white/5 last:border-0">
-      <span className="text-xs font-mono text-zinc-500 uppercase tracking-widest shrink-0 pt-0.5">{label}</span>
+      <span className="text-xs font-mono text-zinc-400 uppercase tracking-widest shrink-0 pt-0.5">{label}</span>
       <span className="text-sm text-zinc-200 text-right break-all">{value}</span>
     </div>
   );
@@ -68,13 +68,13 @@ export default function SteamProfileCard({ profile }: { profile: SteamProfile })
 
           <div className="pt-12">
             <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="text-white text-lg font-bold tracking-tight leading-none">{profile.name}</h2>
+              <h1 className="text-white text-lg font-bold tracking-tight leading-none">{profile.name}</h1>
               <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full ${state.badge}`}>
                 {state.label}
               </span>
             </div>
             {profile.realName && (
-              <p className="text-zinc-500 text-xs mt-1">{profile.realName}</p>
+              <p className="text-zinc-400 text-xs mt-1">{profile.realName}</p>
             )}
           </div>
         </div>
@@ -89,7 +89,7 @@ export default function SteamProfileCard({ profile }: { profile: SteamProfile })
         {/* Info table */}
         <div className="mx-5 mb-2">
           <InfoRow label="Status" value={<span className="text-zinc-400 text-xs">{profile.stateMessage}</span>} />
-          <InfoRow label="Location" value={profile.location || <span className="text-zinc-600">—</span>} />
+          <InfoRow label="Location" value={profile.location || <span className="text-zinc-400">—</span>} />
           <InfoRow
             label="Visibility"
             value={

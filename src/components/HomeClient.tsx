@@ -4,25 +4,25 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import MarketCard from "@/components/MarketCard";
-import BetModal from "@/components/BetModal";
+import { BetModal } from "@/components/bet-modal";
 import BetSuccessModal from "@/components/BetSuccessModal";
 import { useAuth } from "@/context/AuthContext";
-import type { OurMarket } from "@skinshi/auth-worker/schemas";
-import type { UserBet } from "@/types/market";
+import type { OurMarket } from "@skinshi/api/schemas";
 
-interface HomeClientProps {
-  initialBets: UserBet[];
-}
-
-export default function HomeClient({ initialBets }: HomeClientProps) {
+export default function HomeClient() {
   const trpc = useTRPC();
   const { user } = useAuth();
-  const [userBets] = useState<UserBet[]>(initialBets);
 
   // Use tRPC to fetch markets (fresh data on each request, no SSR cache)
   const { data: markets, isLoading } = useQuery({
     ...trpc.polymarket.allMarkets.queryOptions(),
     // Don't use initialData - let it fetch fresh every time
+  });
+
+  // Fetch real user bets to detect existing bets per market
+  const { data: userBets } = useQuery({
+    ...trpc.user.bets.queryOptions(),
+    enabled: !!user,
   });
 
   const [selectedMarket, setSelectedMarket] = useState<OurMarket | null>(null);
@@ -54,11 +54,6 @@ export default function HomeClient({ initialBets }: HomeClientProps) {
     setSelectedMarket(null);
   };
 
-  // Check if user has any pending bets globally
-  const hasPendingBets = userBets.some(
-    (bet) => bet.trade_status === "pending" || bet.trade_status === "sent"
-  );
-
   const handleBetSuccess = (result: {
     bet_id: string;
     market_slug: string;
@@ -83,8 +78,8 @@ export default function HomeClient({ initialBets }: HomeClientProps) {
     setIsSuccessModalOpen(false);
     setSuccessResult(null);
     setSuccessMarket(null);
-    // Redirect to trade page after closing
-    window.location.href = "/profile/trade";
+    // Redirect to settings trades tab so user can see their bet
+    window.location.href = "/settings?tab=trades";
   };
 
   return (
@@ -93,7 +88,7 @@ export default function HomeClient({ initialBets }: HomeClientProps) {
       <main className="max-w-7xl mx-auto px-6 py-8">
         {/* Hero section */}
         <div className="mb-8">
-          <h2 className="text-3xl font-bold mb-2">Active Markets</h2>
+          <h1 className="text-3xl font-bold mb-2">Active Markets</h1>
           <p className="text-zinc-400">
             Bet your CS2 cases on Polymarket outcomes
           </p>
@@ -102,7 +97,7 @@ export default function HomeClient({ initialBets }: HomeClientProps) {
         {/* Markets grid */}
         {isLoading ? (
           <div className="text-center py-16">
-            <p className="text-zinc-500 text-lg">Loading markets...</p>
+            <p className="text-zinc-400 text-lg">Loading markets...</p>
           </div>
         ) : markets && markets.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -112,14 +107,14 @@ export default function HomeClient({ initialBets }: HomeClientProps) {
                 market={market}
                 userBets={userBets}
                 onBetClick={(outcome) => handleBetClick(market, outcome)}
-                hasPendingBets={hasPendingBets}
+                isLoggedIn={!!user}
               />
             ))}
           </div>
         ) : (
           <div className="text-center py-16">
-            <p className="text-zinc-500 text-lg">No active markets right now.</p>
-            <p className="text-zinc-600 text-sm mt-2">Check back later!</p>
+            <p className="text-zinc-400 text-lg">No active markets right now.</p>
+            <p className="text-zinc-400 text-sm mt-2">Check back later!</p>
           </div>
         )}
       </main>
@@ -148,7 +143,7 @@ export default function HomeClient({ initialBets }: HomeClientProps) {
 
       {/* Footer */}
       <footer className="border-t border-zinc-900 mt-16">
-        <div className="max-w-7xl mx-auto px-6 py-8 text-center text-zinc-600 text-sm">
+        <div className="max-w-7xl mx-auto px-6 py-8 text-center text-zinc-400 text-sm">
           <p>skinshi - Bet CS2 cases on prediction markets</p>
         </div>
       </footer>

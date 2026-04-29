@@ -21,11 +21,11 @@ export default function SuccessPage() {
           await user.getIdTokenResult(true);
         }
         if (mounted) {
-          setStatus('Steam linked. Redirecting to profile...');
+          setStatus('Steam linked. Redirecting to settings...');
         }
       } catch {
         if (mounted) {
-          setStatus('Steam linked. Redirecting to profile...');
+          setStatus('Steam linked. Redirecting to settings...');
         }
       }
     }
@@ -52,7 +52,7 @@ export default function SuccessPage() {
   useEffect(() => {
     if (secondsLeft === 0 && !hasRedirected.current) {
       hasRedirected.current = true;
-      router.replace('/profile');
+      router.replace('/settings');
     }
   }, [secondsLeft, router]);
 
@@ -61,7 +61,7 @@ export default function SuccessPage() {
       <div className="w-full max-w-md rounded-xl border border-white/10 bg-[#141721] p-6 text-zinc-100">
         <h1 className="text-lg font-semibold">Steam Link Successful</h1>
         <p className="mt-3 text-sm text-zinc-300">{status}</p>
-        <p className="mt-2 text-xs text-zinc-500">Redirecting in {secondsLeft}s...</p>
+        <p className="mt-2 text-xs text-zinc-400">Redirecting in {secondsLeft}s...</p>
       </div>
     </div>
   );

@@ -6,6 +6,7 @@
     "dev": "next dev -p ${PORT:-3000}",
     "build": "next build",
     "start": "next start -p ${PORT:-3000}",
+    "prod": "next build && next start -p ${PORT:-3000}",
     "lint": "eslint",
     "typecheck": "tsc --noEmit"
   },
@@ -24,11 +25,12 @@
     "next": "16.2.1",
     "react": "19.2.4",
     "react-dom": "19.2.4",
+    "@skinshi/utils": "workspace:*",
     "superjson": "^2.2.6"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260416.2",
-    "@skinshi/auth-worker": "workspace:*",
+    "@skinshi/api": "workspace:*",
     "@skinshi/polymarket-service": "workspace:*",
     "@skinshi/steam-service": "workspace:*",
     "@tailwindcss/postcss": "^4.2.2",

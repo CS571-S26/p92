@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { OurMarket } from "@skinshi/auth-worker/schemas";
+import type { OurMarket } from "@skinshi/api/schemas";
 
 interface BetSuccessModalProps {
   isOpen: boolean;
@@ -83,7 +83,7 @@ export default function BetSuccessModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4" role="dialog" aria-modal="true">
       <div className="bg-zinc-950 border border-emerald-500/30 rounded-2xl max-w-lg w-full p-8 shadow-2xl shadow-emerald-500/10">
         {/* Success Header */}
         <div className="text-center mb-8">
@@ -168,7 +168,7 @@ export default function BetSuccessModal({
                 >
                   {result.outcome.toUpperCase()}
                 </span>
-                <span className="text-zinc-500">•</span>
+                <span className="text-zinc-400">•</span>
                 <span className="text-zinc-400">{result.item_count} cases</span>
               </div>
             </div>
@@ -183,7 +183,7 @@ export default function BetSuccessModal({
             </svg>
             <span className="text-amber-400 text-sm font-medium">Expires in {tradeExpiryCountdown}</span>
           </div>
-          <span className="text-zinc-500 text-xs">1 hour limit</span>
+          <span className="text-zinc-400 text-xs">1 hour limit</span>
         </div>
 
         {/* Secondary Actions */}
@@ -203,7 +203,7 @@ export default function BetSuccessModal({
         </div>
 
         {/* Auto-redirect notice */}
-        <p className="text-zinc-600 text-xs text-center mt-4">
+        <p className="text-zinc-400 text-xs text-center mt-4">
           Redirecting to trade page in {countdown} seconds...
         </p>
       </div>

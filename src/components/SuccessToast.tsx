@@ -10,7 +10,7 @@ interface SuccessToastProps {
   position?: "top-right" | "bottom-right";
 }
 
-export default function SuccessToast({ email, onDone, duration = 3000, reason, position = "top-right" }: SuccessToastProps) {
+export default function SuccessToast({ email, onDone, duration = 800, reason, position = "bottom-right" }: SuccessToastProps) {
   const [visible, setVisible] = useState(false);
 
   const isNeutral = reason === "Logged out";

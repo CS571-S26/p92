@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
-import { PlaceBetSchema } from "../../../../../workers/auth/src/schemas/bet";
+import { PlaceBetSchema } from "@skinshi/api/schemas/bet";
 
 export default function TrpcPage() {
   const trpc = useTRPC();
@@ -13,8 +13,8 @@ export default function TrpcPage() {
 
   const marketQuery = useQuery(
     trpc.polymarket.market.queryOptions({
-      slug: slug || "largest-company-end-of-april-738",
-      id: id || "1487054",
+      slug: slug,
+      id: id,
     }),
   );
 
@@ -103,8 +103,14 @@ export default function TrpcPage() {
 
       <div className="mb-6 space-y-4 bg-zinc-900 p-4 rounded">
         <div>
-          <label className="block text-sm font-medium mb-1">Slug</label>
+          <label
+            htmlFor="slug-input"
+            className="block text-sm font-medium mb-1"
+          >
+            Slug
+          </label>
           <input
+            id="slug-input"
             type="text"
             value={slug}
             onChange={(e) => setSlug(e.target.value)}
@@ -113,8 +119,11 @@ export default function TrpcPage() {
           />
         </div>
         <div>
-          <label className="block text-sm font-medium mb-1">ID</label>
+          <label htmlFor="id-input" className="block text-sm font-medium mb-1">
+            ID
+          </label>
           <input
+            id="id-input"
             type="text"
             value={id}
             onChange={(e) => setId(e.target.value)}
@@ -123,10 +132,14 @@ export default function TrpcPage() {
           />
         </div>
         <div>
-          <label className="block text-sm font-medium mb-1">
+          <label
+            htmlFor="outcome-select"
+            className="block text-sm font-medium mb-1"
+          >
             Outcome (for Resolve)
           </label>
           <select
+            id="outcome-select"
             value={outcome}
             onChange={(e) => setOutcome(e.target.value)}
             className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-white"

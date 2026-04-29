@@ -77,7 +77,7 @@ export default function Login() {
       )}
       <div className="min-h-screen bg-black flex items-center justify-center px-4">
         <div className="bg-zinc-950 border border-zinc-900 p-8 rounded-lg w-full max-w-sm">
-          <h2 className="text-2xl font-bold text-white mb-6">Login</h2>
+          <h1 className="text-2xl font-bold text-white mb-6">Login</h1>
           <form className="space-y-4" onSubmit={handleSubmit}>
             <div>
               <label
@@ -89,7 +89,7 @@ export default function Login() {
               <input
                 type="email"
                 id="email"
-                className="w-full px-3 py-2 rounded bg-black text-white border border-zinc-800 focus:outline-none focus:border-zinc-600 text-sm"
+                className="w-full px-3 py-2 rounded bg-black text-white border border-zinc-800 focus:outline-none focus:border-zinc-600 focus:ring-2 focus:ring-zinc-500 focus:ring-offset-2 focus:ring-offset-black text-sm"
                 value={email}
                 onChange={(e) => {
                   setEmail(e.target.value);
@@ -118,7 +118,7 @@ export default function Login() {
               <input
                 type="password"
                 id="password"
-                className="w-full px-3 py-2 rounded bg-black text-white border border-zinc-800 focus:outline-none focus:border-zinc-600 text-sm"
+                className="w-full px-3 py-2 rounded bg-black text-white border border-zinc-800 focus:outline-none focus:border-zinc-600 focus:ring-2 focus:ring-zinc-500 focus:ring-offset-2 focus:ring-offset-black text-sm"
                 value={password}
                 onChange={(e) => {
                   setPassword(e.target.value);
@@ -133,16 +133,16 @@ export default function Login() {
             </div>
             <button
               type="submit"
-              className="w-full bg-white text-black py-2 rounded font-semibold hover:bg-zinc-200 transition-colors text-sm mt-2"
+              className="w-full bg-white text-black py-2 rounded font-semibold hover:bg-zinc-200 transition-colors text-sm mt-2 focus:ring-2 focus:ring-zinc-500 focus:ring-offset-2 focus:ring-offset-black focus:outline-none"
             >
               Login
             </button>
           </form>
-          <p className="mt-6 text-center text-zinc-500 text-sm">
+          <p className="mt-6 text-center text-zinc-400 text-sm">
             Not registered yet?{" "}
             <button
               type="button"
-              className="text-white underline hover:text-zinc-300 transition-colors"
+              className="text-white underline hover:text-zinc-300 transition-colors focus:ring-2 focus:ring-zinc-500 focus:ring-offset-2 focus:ring-offset-black focus:outline-none rounded px-1"
               onClick={() => router.push("/register")}
             >
               Register

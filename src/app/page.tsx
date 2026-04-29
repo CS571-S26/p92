@@ -1,5 +1,4 @@
 import HomeClient from '@/components/HomeClient';
-import type { UserBet } from '@/types/market';
 
 // Metadata for SEO
 export const metadata = {
@@ -8,12 +7,5 @@ export const metadata = {
 };
 
 export default function Home() {
-  // No SSR prefetching - let client fetch fresh data
-  const initialBets: UserBet[] = [];
-
-  return (
-    <HomeClient
-      initialBets={initialBets}
-    />
-  );
+  return <HomeClient />;
 }

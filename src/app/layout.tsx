@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
 import Header from "@/components/Header";
-import { TrpcProvider } from "@/components/providers";
+import { TRPCReactProvider } from "@/trpc/client";
 
 export const metadata: Metadata = {
   title: "Skinshi",
@@ -13,12 +13,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body>
-        <TrpcProvider>
+        <TRPCReactProvider>
           <AuthProvider>
             <Header />
             {children}
           </AuthProvider>
-        </TrpcProvider>
+        </TRPCReactProvider>
       </body>
     </html>
   );

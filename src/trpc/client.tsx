@@ -8,7 +8,7 @@ import superjson from 'superjson';
 import { useState } from 'react';
 import { getAuth } from 'firebase/auth';
 import { makeQueryClient } from './query-client';
-import type { AppRouter } from '@skinshi/auth-worker/router';
+import type { AppRouter } from '@skinshi/api/router';
 
 export const { TRPCProvider, useTRPC } = createTRPCContext<AppRouter>();
 
